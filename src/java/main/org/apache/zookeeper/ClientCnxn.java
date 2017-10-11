@@ -124,11 +124,13 @@ public class ClientCnxn {
 
     /**
      * These are the packets that have been sent and are waiting for a response.
+     * 等待服务端反馈的等待队列
      */
     private final LinkedList<Packet> pendingQueue = new LinkedList<Packet>();
 
     /**
      * These are the packets that need to be sent.
+     * 保存了需要发送的packets的队列
      */
     private final LinkedBlockingDeque<Packet> outgoingQueue = new LinkedBlockingDeque<Packet>();
 
@@ -284,7 +286,8 @@ public class ClientCnxn {
             this.readOnly = readOnly;
             this.watchRegistration = watchRegistration;
         }
-
+        //序列化请求体
+        //序列化的内容包括：请求头
         public void createBB() {
             try {
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -706,6 +709,7 @@ public class ClientCnxn {
             }
         } else {
             p.finished = true;
+            //如果有事件信息，将该响应packet推到事件队列中
             eventThread.queuePacket(p);
         }
     }
@@ -791,17 +795,20 @@ public class ClientCnxn {
      * beats. It also spawns the ReadThread.
      */
     class SendThread extends ZooKeeperThread {
+        //最后一次ping消息发送的时间戳
         private long lastPingSentNs;
+        //与服务器通信的socket
         private final ClientCnxnSocket clientCnxnSocket;
-        private Random r = new Random(System.nanoTime());        
+        private Random r = new Random(System.nanoTime());
+        //是否为第一次连接，第一次连接后，会置为false
         private boolean isFirstConnect = true;
-
+        //读取响应
         void readResponse(ByteBuffer incomingBuffer) throws IOException {
             ByteBufferInputStream bbis = new ByteBufferInputStream(
                     incomingBuffer);
             BinaryInputArchive bbia = BinaryInputArchive.getArchive(bbis);
             ReplyHeader replyHdr = new ReplyHeader();
-
+            //反序列化响应头信息
             replyHdr.deserialize(bbia, "header");
             if (replyHdr.getXid() == -2) {
                 // -2 is the xid for pings
@@ -902,6 +909,7 @@ public class ClientCnxn {
                 if (replyHdr.getZxid() > 0) {
                     lastZxid = replyHdr.getZxid();
                 }
+                //反序列化响应体信息
                 if (packet.response != null && replyHdr.getErr() == 0) {
                     packet.response.deserialize(bbia, "response");
                 }
@@ -1117,14 +1125,19 @@ public class ClientCnxn {
             ", closing socket connection and attempting reconnect";
         @Override
         public void run() {
+            //初始化当前请求的上下文信息
             clientCnxnSocket.introduce(this, sessionId, outgoingQueue);
+            //记录当前的时间戳
             clientCnxnSocket.updateNow();
+            //更新最后一次的发送时间和最后一次的接收时间为当前时间戳
             clientCnxnSocket.updateLastSendAndHeard();
             int to;
             long lastPingRwServer = Time.currentElapsedTime();
+            //每隔10s向服务器端发送一个ping信息
             final int MAX_SEND_PING_INTERVAL = 10000; //10 seconds
             while (state.isAlive()) {
                 try {
+                    //如果还没有连接，首先执行连接操作
                     if (!clientCnxnSocket.isConnected()) {
                         // don't re-establish connection if we are closing
                         if (closing) {
@@ -1133,9 +1146,10 @@ public class ClientCnxn {
                         startConnect();
                         clientCnxnSocket.updateLastSendAndHeard();
                     }
-
+                    //如果已经连接了
                     if (state.isConnected()) {
                         // determine whether we need to send an AuthFailed event.
+                        // 决定是否需要发送一个认证失败的事件
                         if (zooKeeperSaslClient != null) {
                             boolean sendAuthEvent = false;
                             if (zooKeeperSaslClient.getSaslState() == ZooKeeperSaslClient.SaslState.INITIAL) {
@@ -1210,7 +1224,7 @@ public class ClientCnxn {
                         }
                         to = Math.min(to, pingRwTimeout - idlePingRwServer);
                     }
-
+                    //执行与服务器端的通信
                     clientCnxnSocket.doTransport(to, pendingQueue, ClientCnxn.this);
                 } catch (Throwable e) {
                     if (closing) {
@@ -1529,7 +1543,7 @@ public class ClientCnxn {
         return queuePacket(h, r, request, response, cb, clientPath, serverPath,
                 ctx, watchRegistration, null);
     }
-
+    //将一个packet放到outgoingQueue队列中，并让socket去发送
     public Packet queuePacket(RequestHeader h, ReplyHeader r, Record request,
             Record response, AsyncCallback cb, String clientPath,
             String serverPath, Object ctx, WatchRegistration watchRegistration,
@@ -1561,6 +1575,7 @@ public class ClientCnxn {
                 outgoingQueue.add(packet);
             }
         }
+        //唤醒selector.selelct()方法
         sendThread.getClientCnxnSocket().packetAdded();
         return packet;
     }

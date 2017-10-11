@@ -64,13 +64,16 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
      * @return true if a packet was received
      * @throws InterruptedException
      * @throws IOException
+     * 发送packet到服务器端
      */
     void doIO(List<Packet> pendingQueue, ClientCnxn cnxn)
       throws InterruptedException, IOException {
+        //拿到一个客户端的socket通道
         SocketChannel sock = (SocketChannel) sockKey.channel();
         if (sock == null) {
             throw new IOException("Socket is null!");
         }
+        //客户端通道可读（服务端响应了数据）
         if (sockKey.isReadable()) {
             int rc = sock.read(incomingBuffer);
             if (rc < 0) {
@@ -81,6 +84,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
             }
             if (!incomingBuffer.hasRemaining()) {
                 incomingBuffer.flip();
+                //初始状态下
                 if (incomingBuffer == lenBuffer) {
                     recvCount++;
                     readLength();

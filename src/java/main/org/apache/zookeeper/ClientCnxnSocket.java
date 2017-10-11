@@ -175,6 +175,7 @@ abstract class ClientCnxnSocket {
 
     /**
      * new packets are added to outgoingQueue.
+     * 调用该方法时，可以让selector立即从select()中唤醒。
      */
     abstract void packetAdded();
 
